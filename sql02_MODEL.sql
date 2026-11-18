@@ -68,3 +68,19 @@ ALTER TABLE fact_price_demand  ADD FOREIGN KEY (time_key) REFERENCES dim_time(ti
 SELECT COUNT(*) FROM fact_price_demand;   -- 210240
 SELECT COUNT(*) FROM dim_date;            -- 730
 SELECT COUNT(*) FROM dim_time;            -- 288
+
+--Additional Column
+ALTER TABLE dim_date
+ADD day_sort INT;
+
+UPDATE dim_date
+SET day_sort =
+	CASE day_name
+		WHEN 'Mon' THEN 1
+		WHEN 'Tue' THEN 2
+		WHEN 'Wed' THEN 3
+		WHEN 'Thu' THEN 4
+		WHEN 'Fri' THEN 5
+		WHEN 'Sat' THEN 6
+		WHEN 'Sun' THEN 7
+	END;
