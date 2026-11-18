@@ -1,5 +1,6 @@
 import io
 import os
+import time
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -21,27 +22,37 @@ engine = create_engine(
 )
 
 # --- Extract ---
-FILE_NAME = "PRICE_AND_DEMAND_202610_VIC1.csv"
-URL = f"https://aemo.com.au/aemo/data/nem/priceanddemand/{FILE_NAME}"
-LOCAL_PATH = Path("data") / FILE_NAME
+START, END = "2024-11", "2026-10"
+HEADERS = {"User-Agent": "vic-energy-analytics (personal portfolio project)"}
+
+
+def extract_month(yyyymm: str) -> pd.DataFrame:
+    file_name = f"PRICE_AND_DEMAND_{yyyymm}_VIC1.csv"
+    local_path = Path("data") / file_name
+
+    if local_path.exists():                      # cache: don't re-download
+        return pd.read_csv(local_path)
+
+    url = f"https://aemo.com.au/aemo/data/nem/priceanddemand/{file_name}"
+    response = requests.get(url, headers=HEADERS, timeout=30)
+    response.raise_for_status()
+
+    local_path.parent.mkdir(exist_ok=True)       # create data/ if missing
+    local_path.write_text(response.text)         # save a copy
+    time.sleep(1)                                # be polite to the server
+    return pd.read_csv(io.StringIO(response.text))
 
 
 def extract() -> pd.DataFrame:
-    """Download the CSV; fall back to a local copy if the download fails."""
-    try:
-        response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-        response.raise_for_status()
-        print("Downloaded from AEMO")
-        return pd.read_csv(io.StringIO(response.text))
-    except requests.RequestException as e:
-        print(f"Download failed ({e}). Trying local file...")
-        if LOCAL_PATH.exists():
-            return pd.read_csv(LOCAL_PATH)
-        raise FileNotFoundError(
-            f"No local file at {LOCAL_PATH}. Download the CSV manually from AEMO "
-            "and save it there."
-        )
-
+    frames = []
+    for m in pd.period_range(START, END, freq="M"):
+        yyyymm = m.strftime("%Y%m")
+        try:
+            frames.append(extract_month(yyyymm))
+            print(f"{yyyymm}: ok")
+        except requests.RequestException as e:
+            print(f"{yyyymm}: skipped ({e})")
+    return pd.concat(frames, ignore_index=True)
 
 # --- Transform (light cleaning only; heavy work happens in SQL) ---
 def transform(df: pd.DataFrame) -> pd.DataFrame:
